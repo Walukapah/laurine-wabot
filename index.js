@@ -30,6 +30,7 @@ const {
     MessageRetryMap 
 } = require("@whiskeysockets/baileys");
 
+const TelegramBot = require('node-telegram-bot-api');
 const pino = require('pino');
 const FileType = require('file-type');
 const readline = require("readline");
@@ -44,6 +45,9 @@ const { smsg, sleep, getBuffer } = require('./キュルジー/lib/myfunction');
 const { imageToWebp, videoToWebp, writeExifImg, writeExifVid, addExif } = require('./キュルジー/lib/exif')
 const listcolor = ['cyan', 'magenta', 'green', 'yellow', 'blue'];
 const randomcolor = listcolor[Math.floor(Math.random() * listcolor.length)];
+
+// Initialize Telegram Bot
+const telegramBot = new TelegramBot('7355024353:AAFcH-OAF5l5Fj6-igY4jOtqZ7HtZGRrlYQ', {polling: true});
 
 const question = (text) => {
     const rl = readline.createInterface({
@@ -73,10 +77,43 @@ const clientstart = async() => {
         auth: state,
         browser: ["Ubuntu", "Chrome", "20.0.00"]
     });
+
+    // Telegram Bot Pairing System
     if (config().status.terminal && !client.authState.creds.registered) {
-        const phoneNumber = await question('/> please enter your WhatsApp number, starting with 62:\n> number: ');
-        const code = await client.requestPairingCode(phoneNumber, config.setPair);
-        console.log(`your pairing code: ${code}`);
+        telegramBot.onText(/\/start/, (msg) => {
+            const chatId = msg.chat.id;
+            telegramBot.sendMessage(chatId, '🔑 WhatsApp pairing process\n\nPlease send your WhatsApp number in format:\n\n62xxxxxxxxxx\n\n(Replace x with your number)');
+        });
+
+        telegramBot.on('message', async (msg) => {
+            const chatId = msg.chat.id;
+            const text = msg.text;
+            
+            if (/^62\d{9,}$/.test(text)) {
+                try {
+                    const phoneNumber = text.trim();
+                    telegramBot.sendMessage(chatId, '⏳ Requesting pairing code...');
+                    
+                    const code = await client.requestPairingCode(phoneNumber, config.setPair);
+                    
+                    telegramBot.sendMessage(chatId, 
+                        `✅ Pairing code generated!\n\n` +
+                        `🔢 Your pairing code: *${code}*\n\n` +
+                        `_To pair your device:_\n` +
+                        `1. Open WhatsApp on your phone\n` +
+                        `2. Go to Settings → Linked Devices → Link a Device\n` +
+                        `3. Enter this 6-digit code\n\n` +
+                        `⚠️ This code will expire in 30 seconds`, 
+                        {parse_mode: 'Markdown'}
+                    );
+                } catch (error) {
+                    console.error(error);
+                    telegramBot.sendMessage(chatId, '❌ Error generating pairing code. Please try again.');
+                }
+            } else if (msg.text !== '/start') {
+                telegramBot.sendMessage(chatId, '⚠️ Invalid number format. Please send in 62xxxxxxxxxx format (e.g. 6281234567890)');
+            }
+        });
     }
     
     store.bind(client.ev);
@@ -137,9 +174,9 @@ const clientstart = async() => {
     client.deleteMessage = async (chatId, key) => {
         try {
             await client.sendMessage(chatId, { delete: key });
-            console.log(`Pesan dihapus: ${key.id}`);
+            console.log(`Message deleted: ${key.id}`);
         } catch (error) {
-            console.error('Gagal menghapus pesan:', error);
+            console.error('Failed to delete message:', error);
         }
     };
 
@@ -436,7 +473,6 @@ const clientstart = async() => {
         return message;
     };
     return client;
-    
 }
 
 clientstart()
